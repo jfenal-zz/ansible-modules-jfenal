@@ -1,5 +1,6 @@
 #!/usr/bin/python
-# vim: et tw=120
+# -*- coding: utf-8 -*-
+# vim: set et tw=120
 # Jérôme Fenal (jfenal@redhat.com)
 #
 # Ansible is free software: you can redistribute it and/or modify
@@ -35,7 +36,7 @@ options:
             - I(Repoid) of repositories to enable or disable
               When specifying multiple repos, separate them with a ",".
               To specify all repositories, use "*".
-        required: true
+        required: True
         default: null
         aliases: ['repo', 'repos']
     state:
@@ -48,58 +49,39 @@ options:
     list: 
         description:
             - List either all repositories, or only enabled or disabled (via state)
-        required: false
+        required: False
         default: null
 '''
+
+
+EXAMPLES = '''
+# List repositories
+- redhat_repositories: list
+
+# Enable repositories
+- redhat_repositories:
+    name:
+      - rhel-7-server-rpms
+      - rhel-7-server-optional-rpms
+    state: enabled
+
+# Disable repositories
+- redhat_repositories:
+    name:
+      - .*-beta-.*
+      - .*-htb-.*
+      - .*-eus-.*
+      - .*-aus-.*
+    state: disabled
+
+'''
+
 
 import os
 import re
 import types
 import ConfigParser
 import shlex
-
-class RhsmRepository(object):
-    '''
-        This class to host Repository information and enable/disable per repo
-    '''
-    def __init__(self, module):
-        self.module = module
-        for k,v in kwargs.items():
-            setattr(self, k, v)
-
-    def __str__(self):
-        return str(self.__getattribute('_name'))
-
-    def enable(self):
-        '''
-            Enable or disable the named repo
-        '''
-        args = "subscription-manager repos --enable=%s" % self.__str__()
-        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
-        if rc == 0:
-            return True
-        else:
-            return False
-
-
-    def disable(self):
-        '''
-            Disable repository
-        '''
-        args = "subscription-manager repos --disable=%s" % self.__str__()
-        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
-        if rc == 0:
-            return True
-        else:
-            return False
-
-    @property
-    def is_enabled(self):
-        return self.__getattribute("Enabled")
-
-    @property
-    def is_disabled(self):
-        return not self.__getattribute("Enabled")
 
 class RhsmRepositories(object):
     '''
@@ -165,9 +147,6 @@ class RhsmRepositories(object):
     def disablerepo(self, repos=[]):
         args = "subscription-manager repos --disable=" % ",".join( [r for r in self.repos if r.is_enabled and r in repos])
         rc, stdout, stderr = self.module.run_command(args, check_rc=True)
-        
-
-#    def disablerepo(self, repos=[]):
 
     def disable_all():
         args = "subscription-manager repos --disable=*"
@@ -180,43 +159,49 @@ def list_stuff(rhsmrepos, stuff):
     return l
 
 def main():
-    # Initialize RhsmRepositories
-    rhsmrepos = RhsmRepositories(none)
-
+    #
     # Initialise Ansible module
+    #
     module = AnsibleModule(
                 argument_spec = dict(
-                    repo = dict(default=None, required=False),
-                    state = dict(default=None, choices=['enabled','disabled']),
+                    name    = dict(default=None, required=False),
+                    state   = dict(default=None, choices=['enabled','disabled']),
+                    list    = dict(default=None, required=False),
                 ),
-                required_one_of = [['name','list']],
-                mutually_exclusive = [['name','list']],
+                required_one_of = [['name', 'list']],
+                mutually_exclusive = [['name', 'list']],
                 supports_check_mode = False
             )
 
-    repos.module = module
+    #
+    # Initialize RhsmRepositories
+    #
+    rhsmrepos = RhsmRepositories(module = module)
 
+    list = module.params['list']
     name = module.params['name']
-    do_list = module.params['list']
     state = module.params['state']
-
     #
 
-    if do_list:
-        results = dict(results=list_stuff(rhsmrepos, state))
-    elif name is not None:
-        if name == '*':
-            rhsmrepos.disable_all()
-        else:
-            en_name=name.split(name)
+    if list:
+        result=list_stuff(rhsmrepos, state)         # FIXME : maybe review state usage here
+        module.exit_json(changed=False,repos=result)
 
+    elif p_name is not None:
+        if p_name == '*':
+            rhsmrepos.disable_all()
+            module.exit_json(changed=True, state=state, repos=name );
+        else:
+            names=p_name.split(p_name)
             if state == 'enabled':
-                rhsmrepos.enablerepo(en_name)
+                rhsmrepos.enablerepo(names)
             elif state == 'disabled':
-                rhsmrepos.disablerepo(en_name)
+                rhsmrepos.disablerepo(names)
+
+            module.exit_json(changed=True, state=state, repos=[[ names ]] );
 
 # import module snippets
 from ansible.module_utils.basic import *
-from ansible.module_utils.urls import *
+
 if __name__ == '__main__':
     main()
