@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# vim: set et tw=120
+# vim: set et tw=120 ts=4 sw=4
 # Jérôme Fenal (jfenal@redhat.com)
 #
 # Ansible is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ module: redhat_repository
 short_description: Manage repositories with RHSM using the C(subscription-manager) command
 description:
     - List, enable and disable repositories with the Red Hat Subscription Management entitlement platform using the C(subscription-manager) command
-version_added: 2.1
+version_added: 2.3
 author: "Jérôme Fenal (@jfenal)"
 notes:
     - In order to be able to enable repositories, a system will
@@ -82,6 +82,57 @@ import re
 import types
 import ConfigParser
 import shlex
+import syslog
+
+def notice(msg):
+    syslog.syslog(syslog.LOG_NOTICE, msg)
+
+
+
+syslog.openlog('ansible-%s' % os.path.basename(__file__))
+
+class RhsmRepository(object):
+    '''
+        This class to host Repository information and enable/disable per repo
+    '''
+    def __init__(self, module, **kwargs):
+        self.module = module
+        for k,v in kwargs.items():
+            setattr(self, k, v)
+
+    def __str__(self):
+        return str(self.__getattribute('_name'))
+
+    def enable(self):
+        '''
+            Enable or disable the named repo
+        '''
+        args = "subscription-manager repos --enable=%s" % self.__str__()
+        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
+        if rc == 0:
+            return True
+        else:
+            return False
+
+
+    def disable(self):
+        '''
+            Disable repository
+        '''
+        args = "subscription-manager repos --disable=%s" % self.__str__()
+        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
+        if rc == 0:
+            return True
+        else:
+            return False
+
+    @property
+    def is_enabled(self):
+        return self.__getattribute__("Enabled")
+
+    @property
+    def is_disabled(self):
+        return not self.__getattribute__("Enabled")
 
 class RhsmRepositories(object):
     '''
@@ -90,38 +141,47 @@ class RhsmRepositories(object):
 
     def __init__(self, module):
         self.module = module
-        self.repos = self._load_repos()
+	#self.repos = []
+        self.repos = self._load_repo_list()
 
     def __iter__(self):
         return self.repos.__iter__()
     
-    def _load_repos(self):
+    def _load_repo_list(self):
         """
-            Loads list of all available repos, wether enabled or not
+            Loads list of all available repos, whether enabled or not
         """
     
         args = "subscription-manager repos --list"
+        rc, stdout, stderr = self.module.run_command(args, check_rc=True, environ_update=dict(LANG='C'))
+
         repos = []
-
-        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
-
         for line in stdout.split('\n'):
+
             # Remove leading+trailing whitespace
             line = line.strip()
+
             # An empty line implies the end of a output group
             if len(line) == 0:
+		key = value = ''
+		notice("New repo");
                 continue
+
             # If a colon ':' is found, parse
             elif ':' in line:
                 (key, value) = line.split(':',1)
                 key = key.strip().replace(" ", "")  # To unify
                 value = value.strip()
+		notice("**** key: <%s> / value: <%s> " % (key,value))
                 if key in ['RepoID']:
                     # Remember the name for later processing
-                    repos.append(Repository(self.module, _name=value, key=value))
-                elif products:
+	    	    repo=RhsmRepository(self.module, _name=value)
+                    repos.append(repo)
+                    repos[-1].__setattr__(key, value)
+                elif repos:
                     # Associate value with most recently recorded repo
                     repos[-1].__setattr__(key, value)
+             
         return repos
 
     def filter(self, state=None):
@@ -148,14 +208,14 @@ class RhsmRepositories(object):
         args = "subscription-manager repos --disable=" % ",".join( [r for r in self.repos if r.is_enabled and r in repos])
         rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
-    def disable_all():
+    def disable_all(self):
         args = "subscription-manager repos --disable=*"
         rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
 def list_stuff(rhsmrepos, stuff):
     l=[]
     for repo in rhsmrepos.filter(stuff):
-        l.append(repo._name)
+        l.append(dict(name=repo._name, enabled=repo.is_enabled))
     return l
 
 def main():
@@ -170,13 +230,13 @@ def main():
                 ),
                 required_one_of = [['name', 'list']],
                 mutually_exclusive = [['name', 'list']],
-                supports_check_mode = False
+                supports_check_mode = False,
             )
 
     #
     # Initialize RhsmRepositories
     #
-    rhsmrepos = RhsmRepositories(module = module)
+    rhsmrepos = RhsmRepositories(module)
 
     list = module.params['list']
     name = module.params['name']
@@ -187,12 +247,12 @@ def main():
         result=list_stuff(rhsmrepos, state)         # FIXME : maybe review state usage here
         module.exit_json(changed=False,repos=result)
 
-    elif p_name is not None:
-        if p_name == '*':
+    elif name is not None:
+        if name == '*':
             rhsmrepos.disable_all()
             module.exit_json(changed=True, state=state, repos=name );
         else:
-            names=p_name.split(p_name)
+            names=name.split(name)
             if state == 'enabled':
                 rhsmrepos.enablerepo(names)
             elif state == 'disabled':
@@ -201,7 +261,10 @@ def main():
             module.exit_json(changed=True, state=state, repos=[[ names ]] );
 
 # import module snippets
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule
+import syslog
+import pprint
 
 if __name__ == '__main__':
     main()
+
