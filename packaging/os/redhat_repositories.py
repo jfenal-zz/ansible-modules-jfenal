@@ -103,28 +103,28 @@ class RhsmRepository(object):
     def __str__(self):
         return str(self.__getattribute('_name'))
 
-    def enable(self):
-        '''
-            Enable or disable the named repo
-        '''
-        args = "subscription-manager repos --enable=%s" % self.__str__()
-        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
-        if rc == 0:
-            return True
-        else:
-            return False
-
-
-    def disable(self):
-        '''
-            Disable repository
-        '''
-        args = "subscription-manager repos --disable=%s" % self.__str__()
-        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
-        if rc == 0:
-            return True
-        else:
-            return False
+#    def enable(self):
+#        '''
+#            Enable or disable the named repo
+#        '''
+#        args = "subscription-manager repos --enable=%s" % self.__str__()
+#        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
+#        if rc == 0:
+#            return True
+#        else:
+#            return False
+#
+#
+#    def disable(self):
+#        '''
+#            Disable repository
+#        '''
+#        args = "subscription-manager repos --disable=%s" % self.__str__()
+#        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
+#        if rc == 0:
+#            return True
+#        else:
+#            return False
 
     @property
     def is_enabled(self):
