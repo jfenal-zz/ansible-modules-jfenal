@@ -1,0 +1,15 @@
+# vim: set ts=2 sw=2
+---
+- hosts: ipa
+  remote_user: root
+  environment:
+    LANG: C
+  tasks:
+  - name: enable base repos
+    redhat_repositories:
+      name:
+        - rhel-7-server-rpms
+        - rhel-7-server-optional-rpms
+        - rhel-7-server-extras-rpms
+      state:
+        enabled

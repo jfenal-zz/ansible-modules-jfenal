@@ -1,0 +1,11 @@
+# vim: set ts=2 sw=2
+---
+- hosts: ipa
+  remote_user: root
+  environment:
+    LANG: C
+  tasks:
+  - name: disable all repos
+    redhat_repositories: 
+      name=*
+      state=disabled
