@@ -1,7 +1,6 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-# vim: set et tw=120 ts=4 sw=4
-# Jérôme Fenal (jfenal@redhat.com)
+# vim:  et tw=120 ts=4 sw=4
+# Jerome Fenal (jfenal@redhat.com)
 #
 # Ansible is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,7 +22,7 @@ short_description: Manage repositories with RHSM using the C(subscription-manage
 description:
     - List, enable and disable repositories with the Red Hat Subscription Management entitlement platform using the C(subscription-manager) command
 version_added: 2.3
-author: "Jérôme Fenal (@jfenal)"
+author: "Jerome Fenal (@jfenal)"
 notes:
     - In order to be able to enable repositories, a system will
       need first to be subscribed to RHSM. Use the
@@ -38,7 +37,6 @@ options:
               To specify all repositories, use "*".
         required: True
         default: null
-        aliases: ['repo', 'repos']
     state:
         description:
             - whether to enable (C(enabled)) or disable (C(disabled)) a repository
@@ -83,13 +81,6 @@ import types
 import ConfigParser
 import shlex
 import syslog
-
-def notice(msg):
-    syslog.syslog(syslog.LOG_NOTICE, msg)
-
-
-
-syslog.openlog('ansible-%s' % os.path.basename(__file__))
 
 class RhsmRepository(object):
     '''
@@ -140,9 +131,8 @@ class RhsmRepositories(object):
     '''
 
     def __init__(self, module):
-        self.module = module
-	#self.repos = []
-        self.repos = self._load_repo_list()
+       self.module = module
+       self.repos = None
 
     def __iter__(self):
         return self.repos.__iter__()
@@ -163,19 +153,16 @@ class RhsmRepositories(object):
 
             # An empty line implies the end of a output group
             if len(line) == 0:
-		key = value = ''
-		notice("New repo");
+                key = value = ''
                 continue
 
             # If a colon ':' is found, parse
-            elif ':' in line:
                 (key, value) = line.split(':',1)
                 key = key.strip().replace(" ", "")  # To unify
                 value = value.strip()
-		notice("**** key: <%s> / value: <%s> " % (key,value))
                 if key in ['RepoID']:
                     # Remember the name for later processing
-	    	    repo=RhsmRepository(self.module, _name=value)
+                    repo=RhsmRepository(self.module, _name=value)
                     repos.append(repo)
                     repos[-1].__setattr__(key, value)
                 elif repos:
@@ -188,25 +175,37 @@ class RhsmRepositories(object):
         ''' 
             Return a list of Repositories where state matches (null: all, enabled, disabled)
         '''
-        if state == 'all' or state is None:
-            for repo in self.repos:
-                yield repo 
-        elif state == 'enabled':
-            for repo in self.repos:
-                if repo.is_enabled():
-                    yield repo
-        elif state == 'disabled':
-            for repo in self.repos:
-                if repo.is_disabled():
-                    yield repo
 
-    def enablerepo(self, repos=[]):
-        args = "subscription-manager repos --enable=" % ",".join( [r for r in self.repos if r.is_disabled and r in repos])
-        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
+        if self.repos is None:
+            self.repos = self._load_repo_list()
 
-    def disablerepo(self, repos=[]):
-        args = "subscription-manager repos --disable=" % ",".join( [r for r in self.repos if r.is_enabled and r in repos])
-        rc, stdout, stderr = self.module.run_command(args, check_rc=True)
+            if state == 'all' or state is None:
+                for repo in self.repos:
+                    yield repo 
+
+            elif state == 'enabled':
+                for repo in self.repos:
+                    if repo.is_enabled():
+                        yield repo
+
+            elif state == 'disabled':
+                for repo in self.repos:
+                    if repo.is_disabled():
+                        yield repo
+
+    def enablerepo(self, name):
+        if len(name) > 0:
+            args="subscription-manager repos "
+            for n in name:
+                args+=" --enable="+n
+            rc, stdout, stderr = self.module.run_command(args, check_rc=True)
+
+    def disablerepo(self, name):
+        if len(name) > 0:
+            args="subscription-manager repos "
+            for n in name:
+                args += " --disable=" + n 
+            rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
     def disable_all(self):
         args = "subscription-manager repos --disable=*"
@@ -224,7 +223,7 @@ def main():
     #
     module = AnsibleModule(
                 argument_spec = dict(
-                    name    = dict(default=None, required=False),
+                    name    = dict(default=None, required=False, type="list"),
                     state   = dict(default=None, choices=['enabled','disabled']),
                     list    = dict(default=None, required=False),
                 ),
@@ -250,20 +249,17 @@ def main():
     elif name is not None:
         if name == '*':
             rhsmrepos.disable_all()
-            module.exit_json(changed=True, state=state, repos=name );
+            module.exit_json(changed=True, state=state, name=name);
         else:
-            names=name.split(name)
             if state == 'enabled':
-                rhsmrepos.enablerepo(names)
+                rhsmrepos.enablerepo(name=name)
             elif state == 'disabled':
-                rhsmrepos.disablerepo(names)
-
-            module.exit_json(changed=True, state=state, repos=[[ names ]] );
+                rhsmrepos.disablerepo(name=name)
+            module.exit_json(changed=True, state=state, name=name);
 
 # import module snippets
 from ansible.module_utils.basic import AnsibleModule
 import syslog
-import pprint
 
 if __name__ == '__main__':
     main()
