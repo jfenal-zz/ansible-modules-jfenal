@@ -1,4 +1,4 @@
-# vim: ts=2 sw=2
+# vim: et ts=2 sw=2
 ---
 - hosts: ipa
   remote_user: root
@@ -6,6 +6,4 @@
     LANG: C
   tasks:
   - name: list repositories
-    redhat_repositories: list
-
-
+    redhat_repositories: list=1
