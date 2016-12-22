@@ -30,9 +30,9 @@ notes:
 requirements:
     - subscription-manager
 options:
-    name: 
+    id: 
         description:
-            - I(Repoid) of repositories to enable or disable
+            - I(RepoIDs) of repositories to enable or disable
               When specifying multiple repos, separate them with a ",".
               To specify all repositories, use "*".
         required: True
@@ -46,31 +46,42 @@ options:
         required: False
     list: 
         description:
-            - List either all repositories, or only enabled or disabled (via state)
+            - List either all repositories, or only enabled or disabled
         required: False
-        default: null
+        default: all
+        choices: [ "all", "enabled", "disabled" ]
+
 '''
 
 
 EXAMPLES = '''
-# List repositories
-- redhat_repositories: list
+# List all repositories
+- redhat_repositories: list=all
+
+# List enabled repositories
+- redhat_repositories: list=enabled
+
+# List disabled repositories
+- redhat_repositories: list=disabled
 
 # Enable repositories
 - redhat_repositories:
-    name:
+    id:
       - rhel-7-server-rpms
       - rhel-7-server-optional-rpms
     state: enabled
 
 # Disable repositories
 - redhat_repositories:
-    name:
+    id:
       - .*-beta-.*
       - .*-htb-.*
       - .*-eus-.*
       - .*-aus-.*
     state: disabled
+
+# Disable all repositories
+- redhat_repositories: id=* state=disabled
 
 '''
 
@@ -81,6 +92,12 @@ import types
 import ConfigParser
 import shlex
 import syslog
+import pprint
+
+def notice(msg):
+    syslog.syslog(syslog.LOG_NOTICE, msg)
+
+syslog.openlog('ansible-%s' % os.path.basename(__file__))
 
 class RhsmRepository(object):
     '''
@@ -118,12 +135,25 @@ class RhsmRepository(object):
 #            return False
 
     @property
+    def id(self):
+        return self.RepoID
+
+    @property
+    def name(self):
+        return self.RepoName
+
+    @property
+    def url(self):
+        return self.RepoURL
+
+
+    @property
     def is_enabled(self):
-        return self.__getattribute__("Enabled")
+        return self.Enabled
 
     @property
     def is_disabled(self):
-        return not self.__getattribute__("Enabled")
+        return not self.Enabled
 
 class RhsmRepositories(object):
     '''
@@ -132,7 +162,7 @@ class RhsmRepositories(object):
 
     def __init__(self, module):
        self.module = module
-       self.repos = None
+       self.repos = self._load_repo_list()
 
     def __iter__(self):
         return self.repos.__iter__()
@@ -142,7 +172,8 @@ class RhsmRepositories(object):
             Loads list of all available repos, whether enabled or not
         """
     
-        args = "subscription-manager repos --list"
+        #args = "subscription-manager repos --list"
+        args = "cat /tmp/list.txt"
         rc, stdout, stderr = self.module.run_command(args, check_rc=True, environ_update=dict(LANG='C'))
 
         repos = []
@@ -151,47 +182,49 @@ class RhsmRepositories(object):
             # Remove leading+trailing whitespace
             line = line.strip()
 
-            # An empty line implies the end of a output group
-            if len(line) == 0:
-                key = value = ''
+            # An empty line implies the end of a output group, strip headers too
+            if len(line) == 0 or re.match(r'^\s+.*', line) or re.match(r'^\+s.*', line):
+                continue
+
+                key = ''
+                value = ''
                 continue
 
             # If a colon ':' is found, parse
+            elif ':' in line:
                 (key, value) = line.split(':',1)
                 key = key.strip().replace(" ", "")  # To unify
                 value = value.strip()
                 if key in ['RepoID']:
                     # Remember the name for later processing
-                    repo=RhsmRepository(self.module, _name=value)
-                    repos.append(repo)
+                    repos.append( RhsmRepository(self.module, _name=value) )
                     repos[-1].__setattr__(key, value)
+                elif key in ['Enabled']:
+                    # Use a real boolean
+                    repos[-1].__setattr__(key, value == '1')
                 elif repos:
                     # Associate value with most recently recorded repo
                     repos[-1].__setattr__(key, value)
              
         return repos
 
-    def filter(self, state=None):
+    def filter(self, state):
         ''' 
             Return a list of Repositories where state matches (null: all, enabled, disabled)
         '''
+        if state is None or state == 'all':
+            for repo in self.repos:
+                yield repo 
 
-        if self.repos is None:
-            self.repos = self._load_repo_list()
+        elif state == 'enabled':
+            for repo in self.repos:
+                if repo.Enabled:
+                    yield repo
 
-            if state == 'all' or state is None:
-                for repo in self.repos:
-                    yield repo 
-
-            elif state == 'enabled':
-                for repo in self.repos:
-                    if repo.is_enabled():
-                        yield repo
-
-            elif state == 'disabled':
-                for repo in self.repos:
-                    if repo.is_disabled():
-                        yield repo
+        elif state == 'disabled':
+            for repo in self.repos:
+                if not repo.Enabled:
+                    yield repo
 
     def enablerepo(self, name):
         if len(name) > 0:
@@ -214,7 +247,7 @@ class RhsmRepositories(object):
 def list_stuff(rhsmrepos, stuff):
     l=[]
     for repo in rhsmrepos.filter(stuff):
-        l.append(dict(name=repo._name, enabled=repo.is_enabled))
+        l.append(dict(id=repo.id, name=repo.name, enabled=repo.is_enabled, url=repo.url))
     return l
 
 def main():
@@ -223,12 +256,12 @@ def main():
     #
     module = AnsibleModule(
                 argument_spec = dict(
-                    name    = dict(default=None, required=False, type="list"),
+                    id      = dict(default=None, type="list"),
                     state   = dict(default=None, choices=['enabled','disabled']),
-                    list    = dict(default=None, required=False),
+                    list    = dict(default='all', choices=['all','enabled','disabled']),
                 ),
-                required_one_of = [['name', 'list']],
-                mutually_exclusive = [['name', 'list']],
+                required_one_of = [['id', 'list']],
+                mutually_exclusive = [['id', 'list']],
                 supports_check_mode = False,
             )
 
@@ -237,29 +270,34 @@ def main():
     #
     rhsmrepos = RhsmRepositories(module)
 
+#for repo in rhsmrepos.repos: notice(pprint.pformat(repo))
+
     list = module.params['list']
-    name = module.params['name']
+    id = module.params['id']
     state = module.params['state']
     #
 
-    if list:
-        result=list_stuff(rhsmrepos, state)         # FIXME : maybe review state usage here
-        module.exit_json(changed=False,repos=result)
+    if list is not None:
+        if list in [ 'all', 'enabled', 'disabled' ]:
+            result=list_stuff(rhsmrepos, list)
+            module.exit_json(changed=False,repos=result)
+        else:
+            # we shouldn't reach this with Ansible.
+            module.exit_json(changed=False,error="Unknown list primitive")
 
-    elif name is not None:
-        if name == '*':
+    elif id is not None:
+        if id == '*':
             rhsmrepos.disable_all()
-            module.exit_json(changed=True, state=state, name=name);
+            module.exit_json(changed=True, state=state, id=id);
         else:
             if state == 'enabled':
-                rhsmrepos.enablerepo(name=name)
+                rhsmrepos.enablerepo(id=id)
             elif state == 'disabled':
-                rhsmrepos.disablerepo(name=name)
-            module.exit_json(changed=True, state=state, name=name);
+                rhsmrepos.disablerepo(id=id)
+            module.exit_json(changed=True, state=state, id=id);
 
 # import module snippets
 from ansible.module_utils.basic import AnsibleModule
-import syslog
 
 if __name__ == '__main__':
     main()
