@@ -93,6 +93,8 @@ import ConfigParser
 import shlex
 import syslog
 import pprint
+# import module snippets
+from ansible.module_utils.basic import AnsibleModule
 
 def notice(msg):
     syslog.syslog(syslog.LOG_NOTICE, msg)
@@ -172,8 +174,7 @@ class RhsmRepositories(object):
             Loads list of all available repos, whether enabled or not
         """
     
-        #args = "subscription-manager repos --list"
-        args = "cat /tmp/list.txt"
+        args = "subscription-manager repos --list"
         rc, stdout, stderr = self.module.run_command(args, check_rc=True, environ_update=dict(LANG='C'))
 
         repos = []
@@ -226,28 +227,32 @@ class RhsmRepositories(object):
                 if not repo.Enabled:
                     yield repo
 
-    def enablerepo(self, name):
-        if len(name) > 0:
+    def enablerepo(self, id):
+        if len(id) > 0:
             args="subscription-manager repos "
-            for n in name:
+            for n in id:
                 args+=" --enable="+n
+            notice("redhat_repository: enable repos args: " + args)
             rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
-    def disablerepo(self, name):
-        if len(name) > 0:
+    def disablerepo(self, id):
+        if len(id) > 0:
             args="subscription-manager repos "
-            for n in name:
+            for n in id:
                 args += " --disable=" + n 
             rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
     def disable_all(self):
-        args = "subscription-manager repos --disable=*"
+        notice("redhat_repository: disable all repos")
+        args = "subscription-manager repos --disable='*'"
         rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
 def list_stuff(rhsmrepos, stuff):
-    l=[]
+    l={}
     for repo in rhsmrepos.filter(stuff):
-        l.append(dict(id=repo.id, name=repo.name, enabled=repo.is_enabled, url=repo.url))
+        id=repo.id
+        id=id.replace("-", "_") 
+        l[id] = dict(id=repo.id, name=repo.name, enabled=repo.is_enabled, url=repo.url)
     return l
 
 def main():
@@ -258,7 +263,8 @@ def main():
                 argument_spec = dict(
                     id      = dict(default=None, type="list"),
                     state   = dict(default=None, choices=['enabled','disabled']),
-                    list    = dict(default='all', choices=['all','enabled','disabled']),
+                    # can't set a default='all' on list, otherwise id will never be used to enable/disable repos
+                    list    = dict(default=None, choices=['all','enabled','disabled']),
                 ),
                 required_one_of = [['id', 'list']],
                 mutually_exclusive = [['id', 'list']],
@@ -272,32 +278,35 @@ def main():
 
 #for repo in rhsmrepos.repos: notice(pprint.pformat(repo))
 
-    list = module.params['list']
-    id = module.params['id']
-    state = module.params['state']
+    p_list = module.params['list']
+    p_id = module.params['id']
+    p_state = module.params['state']
     #
 
-    if list is not None:
-        if list in [ 'all', 'enabled', 'disabled' ]:
-            result=list_stuff(rhsmrepos, list)
+    msg = "redhat_repository: in main | list=" + str(p_list) + " | id=" + str(p_id) + " | state=" + str(p_state)
+    notice(msg)
+    if p_list is not None:
+        notice("redhat_repository: in main, list is not None")
+        if p_list in [ 'all', 'enabled', 'disabled' ]:
+            result=list_stuff(rhsmrepos, p_list)
             module.exit_json(changed=False,repos=result)
         else:
             # we shouldn't reach this with Ansible.
             module.exit_json(changed=False,error="Unknown list primitive")
 
-    elif id is not None:
-        if id == '*':
-            rhsmrepos.disable_all()
-            module.exit_json(changed=True, state=state, id=id);
-        else:
-            if state == 'enabled':
-                rhsmrepos.enablerepo(id=id)
-            elif state == 'disabled':
-                rhsmrepos.disablerepo(id=id)
-            module.exit_json(changed=True, state=state, id=id);
+    elif p_id is not None:
+       notice("redhat_repository: in main, id is not None")
+       if p_state == 'enabled':
+           rhsmrepos.enablerepo(p_id)
+       elif p_state == 'disabled':
+           notice("redhat_repository: in main, state=disabled")
+           if id == '*':
+               # take a shortcut
+               rhsmrepos.disable_all()
+           else:
+               rhsmrepos.disablerepo(p_id)
 
-# import module snippets
-from ansible.module_utils.basic import AnsibleModule
+       module.exit_json(changed=True, state=p_state, id=p_id);
 
 if __name__ == '__main__':
     main()
