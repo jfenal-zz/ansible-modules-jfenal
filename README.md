@@ -16,17 +16,19 @@ Each module has a test suite in the test directory. You may have to supply the r
 License
 =======
 
-There modules are licensed under the GPLv3, as Anisble Core is.
+There modules are licensed under the GPLv3, as Ansible Core is.
 
 Installation
 ============
 
 Fork it and add the resulting directory to your Ansible library path.
 
-  mkdir $HOME/dev
-  cd $HOME/dev
-  git clone https://github.com/jfenal/ansible-modules-jfenal.git
-  ANSIBLE_LIBRARY="$HOME/dev/ansible-modules-jfenal" 
-  export ANSIBLE_LIBRARY
+```shell
+mkdir $HOME/dev
+cd $HOME/dev
+git clone https://github.com/jfenal/ansible-modules-jfenal.git
+ANSIBLE_LIBRARY="$HOME/dev/ansible-modules-jfenal" 
+export ANSIBLE_LIBRARY
+```
 
 
