@@ -1,11 +1,25 @@
-# vim: set ts=2 sw=2
+# vim: et ts=2 sw=2
 ---
-- hosts: ipa
+- hosts: testhosts
   remote_user: root
   environment:
     LANG: C
   tasks:
   - name: disable all repos
     redhat_repositories: 
-      name=*
+      id="*"
       state=disabled
+
+  - name: list enabled repositories
+    redhat_repositories:
+      list=enabled
+    register: list_enabled
+
+  - name: debug list enabled (should be empty)
+    debug: var=list_enabled.repos
+
+  - name: assert list_enabled is empty
+    assert: 
+      that:
+      - "list_enabled.repos == {}"   
+      msg: "list_enabled must be empty"

@@ -1,9 +1,29 @@
 # vim: et ts=2 sw=2
 ---
-- hosts: ipa
+- hosts: testhosts
   remote_user: root
   environment:
     LANG: C
   tasks:
-  - name: list repositories
-    redhat_repositories: list=1
+  - name: list all repositories
+    redhat_repositories:
+      list=all
+    register: list
+  - name: debug list
+    debug: var=list
+
+  - name: list disabled repositories
+    redhat_repositories:
+      list=disabled
+    register: list_disabled
+
+  - name: debug list disabled
+    debug: var=list_disabled
+
+  - name: list enabled repositories
+    redhat_repositories:
+      list=enabled
+    register: list_enabled
+
+  - name: debug list enabled
+    debug: var=list_enabled
