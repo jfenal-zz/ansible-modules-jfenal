@@ -9,6 +9,7 @@
     redhat_repositories: 
       id="*"
       state=disabled
+      mode=incremental
 
   - name: list enabled repositories
     redhat_repositories:
