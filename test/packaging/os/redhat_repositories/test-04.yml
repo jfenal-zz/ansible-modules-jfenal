@@ -1,0 +1,32 @@
+# vim: et ts=2 sw=2
+---
+- hosts: testhosts
+  remote_user: root
+  environment:
+    LANG: C
+  tasks:
+  - name: enable base repos
+    redhat_repositories:
+      id:
+        - rhel-7-server-rpms
+        - rhel-7-server-extras-rpms
+      state:
+        enabled
+    register: enabled_repos
+
+  - name: debug enabled
+    debug: var=enabled_repos
+
+  - name: list enabled repositories
+    redhat_repositories:
+      list=enabled
+    register: list_enabled
+
+  - name: debug list enabled
+    debug: var=list_enabled 
+
+  - name: assert only listed repos are enabled
+    assert:
+      that:
+        - "{{ list_enabled.repos.rhel_7_server_rpms.enabled }} == True "
+        - "{{ list_enabled.repos.rhel_7_server_extras_rpms.enabled }} == True "
