@@ -101,6 +101,29 @@ EXAMPLES = '''
 
 '''
 
+RETURN = '''
+redhat_repositories:
+    description: list of repositories and their data
+    returned: always
+    type: dict
+    sample: '{
+        "redhat_repositories": {
+            "rhel_7_server_extras_rpms": {
+                "enabled": true,
+                "id": "rhel-7-server-extras-rpms",
+                "name": "Red Hat Enterprise Linux 7 Server - Extras (RPMs)",
+                "url": "https://cdn.redhat.com/content/dist/rhel/server/7/7Server/$basearch/extras/os"
+            },
+            "rhel_7_server_rpms": {
+                "enabled": true,
+                "id": "rhel-7-server-rpms",
+                "name": "Red Hat Enterprise Linux 7 Server (RPMs)",
+                "url": "https://cdn.redhat.com/content/dist/rhel/server/7/$releasever/$basearch/os"
+            }
+        }
+    }'
+
+'''
 
 import os
 import re
@@ -338,7 +361,7 @@ def main():
         notice("redhat_repository: in main, list is not None")
         if p_list in [ 'all', 'enabled', 'disabled' ]:
             result=rhsmrepos.list_stuff(p_list)
-            module.exit_json(changed=False,repos=result)
+            module.exit_json(changed=False,redhat_repositories=result)
         else:
             # we shouldn't reach this with Ansible.
             module.exit_json(changed=False,error="Unknown list primitive")
