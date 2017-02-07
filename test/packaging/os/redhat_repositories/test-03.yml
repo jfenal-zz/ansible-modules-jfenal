@@ -29,6 +29,6 @@
   - name: assert only listed repos are enabled
     assert:
       that:
-        - "{{ list_enabled.repos.rhel_7_server_rpms.enabled }} == True "
-        - "{{ list_enabled.repos.rhel_7_server_optional_rpms.enabled }} == True "
-        - "{{ list_enabled.repos.rhel_7_server_extras_rpms.enabled }} == True "
+        - "{{ list_enabled.redhat_repositories.rhel_7_server_rpms.enabled }} == True "
+        - "{{ list_enabled.redhat_repositories.rhel_7_server_optional_rpms.enabled }} == True "
+        - "{{ list_enabled.redhat_repositories.rhel_7_server_extras_rpms.enabled }} == True "

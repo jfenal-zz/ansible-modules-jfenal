@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 
+
 ANSIBLE_METADATA = {'status': ['preview'],
                     'supported_by': 'community',
                     'version': '1.0'}
@@ -24,55 +25,58 @@ DOCUMENTATION = '''
 module: redhat_repository
 short_description: Manage repositories with RHSM using the C(subscription-manager) command
 description:
-    - Manage repositories with the Red Hat Subscription Management entitlement platform using the C(subscription-manager) command
+  - Manage repositories with the Red Hat Subscription Management entitlement platform using the C(subscription-manager) command
 author: "Jerome Fenal (@jfenal)"
 notes:
-    - In order to be able to enable repositories, a system will
-      need first to be subscribed to RHSM. Use the
-      C(redhat_subscription) Ansible module for that matter.
+  - In order to be able to enable repositories, a system will
+    need first to be subscribed to RHSM. Use the
+    C(redhat_subscription) Ansible module for that matter.
 version_added: "2.3"
 requirements:
-    - subscription-manager
+  - subscription-manager
 options:
-    id:
-        description:
-            - I(RepoIDs) of repositories to enable or disable
-              When specifying multiple repos, separate them with a ",".
-              To specify all repositories, use "*".
-        required: False
-        default: null
-    state:
-        description:
-            - whether to enable (C(enabled)) or disable (C(disabled)) a repository
-        required: False
-        choices: [ "enabled", "disabled" ]
-        default: "enabled"
-    list:
-        description:
-            - List either all repositories, or only enabled or disabled
-        required: False
-        default: all
-        choices: [ "all", "enabled", "disabled" ]
-
-    mode:
-        description:
-            - Use either the idempotent or the incremental mode
-        required: False
-        default: "idempotent"
-        choices: [ "idempotent", "incremental" ]
+  id:
+    description:
+     - id of repositories to enable or disable.
+       When specifying multiple repos, separate them with a C(,).
+       To specify all repositories, use C(*).
+       In incremental mode, other repos won't be touched.
+       In idempotent mode (default), other repos would be disabled or enabled depending on their actual state.
+    required: False
+    default: null
+  list:
+    description:
+      - List either all repositories, or only enabled or disabled.
+    required: False
+    default: all
+    choices: [ "all", "enabled", "disabled" ]
+  mode:
+    description:
+      - Use either the idempotent or the incremental mode.
+    required: False
+    default: "idempotent"
+    choices: [ "idempotent", "incremental" ]
+  state:
+    description:
+      - Whether to enable (C(enabled)) or disable (C(disabled)) a repository.
+    required: False
+    choices: [ "enabled", "disabled" ]
+    default: "enabled"
 
 '''
 
-
 EXAMPLES = '''
 # List all repositories
-- redhat_repositories: list=all
+- redhat_repositories:
+    list: all
 
 # List enabled repositories
-- redhat_repositories: list=enabled
+- redhat_repositories:
+    list: enabled
 
 # List disabled repositories
-- redhat_repositories: list=disabled
+- redhat_repositories:
+    list: disabled
 
 # Enable only those repositories (implicit default idempotent mode)
 - redhat_repositories:
@@ -100,8 +104,10 @@ EXAMPLES = '''
     mode: incremental
 
 # Disable all repositories (mode=incremental must be specified for now)
-- redhat_repositories: id=* state=disabled mode=incremental
-
+- redhat_repositories:
+    id: *
+    state: disabled
+    mode: incremental
 '''
 
 RETURN = '''
@@ -130,21 +136,20 @@ redhat_repositories:
 
 import os
 import re
-import types
-import ConfigParser
-import shlex
 import syslog
-import pprint
-# import module snippets
 from ansible.module_utils.basic import AnsibleModule
 
 debug=False
+
 
 def notice(msg):
     if debug:
         syslog.syslog(syslog.LOG_NOTICE, msg)
 
-syslog.openlog('ansible-%s' % os.path.basename(__file__))
+
+if debug:
+    syslog.openlog('ansible-%s' % os.path.basename(__file__))
+
 
 class RhsmRepository(object):
     '''
@@ -152,7 +157,7 @@ class RhsmRepository(object):
     '''
     def __init__(self, module, **kwargs):
         self.module = module
-        for k,v in kwargs.items():
+        for k, v in kwargs.items():
             setattr(self, k, v)
 
     def __str__(self):
@@ -170,7 +175,6 @@ class RhsmRepository(object):
     def url(self):
         return self.RepoURL
 
-
     @property
     def is_enabled(self):
         return self.Enabled
@@ -179,14 +183,15 @@ class RhsmRepository(object):
     def is_disabled(self):
         return not self.Enabled
 
+
 class RhsmRepositories(object):
     '''
         This class to manipulate repositories
     '''
 
     def __init__(self, module):
-       self.module = module
-       self.repos = self._load_repo_list()
+        self.module = module
+        self.repos = self._load_repo_list()
 
     def __iter__(self):
         return self.repos.__iter__()
@@ -215,7 +220,7 @@ class RhsmRepositories(object):
 
             # If a colon ':' is found, parse
             elif ':' in line:
-                (key, value) = line.split(':',1)
+                (key, value) = line.split(':', 1)
                 key = key.strip().replace(" ", "")  # To unify
                 value = value.strip()
                 if key in ['RepoID']:
@@ -297,7 +302,7 @@ class RhsmRepositories(object):
             notice("redhat_repository: enable_only repos args: " + str(args))
             rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
-        return [ changed, dict(enabled=to_enable,disabled=to_disable) ]
+        return [ changed, dict(enabled=to_enable, disabled=to_disable) ]
 
     def enablerepo(self, id):
         if len(id) > 0:
@@ -325,29 +330,28 @@ class RhsmRepositories(object):
         args = "subscription-manager repos --disable='*'"
         rc, stdout, stderr = self.module.run_command(args, check_rc=True)
 
+
 def main():
     #
     # Initialise Ansible module
     #
     module = AnsibleModule(
-                argument_spec = dict(
-                    id      = dict(default=None, type="list"),
-                    state   = dict(default=None, choices=['enabled','disabled']),
-                    # can't set a default='all' on list, otherwise id will never be used to enable/disable repos
-                    list    = dict(default=None, choices=['all','enabled','disabled']),
-                    mode    = dict(default=None, choices=['idempotent', 'incremental']),
-                ),
-                required_one_of = [['id', 'list']],
-                mutually_exclusive = [['id', 'list']],
-                supports_check_mode = False,
-            )
+        argument_spec = dict(
+            id      = dict(type="list"),
+            # can't set a default='all' on list, otherwise id will never be used to enable/disable repos
+            list    = dict(choices=['all', 'enabled', 'disabled']),
+            mode    = dict(choices=['idempotent', 'incremental']),
+            state   = dict(choices=['enabled', 'disabled']),
+        ),
+        required_one_of = [['id', 'list']],
+        mutually_exclusive = [['id', 'list']],
+        supports_check_mode = False,
+    )
 
     #
     # Initialize RhsmRepositories
     #
     rhsmrepos = RhsmRepositories(module)
-
-#for repo in rhsmrepos.repos: notice(pprint.pformat(repo))
 
     p_list = module.params['list']
     p_id = module.params['id']
@@ -364,10 +368,10 @@ def main():
         notice("redhat_repository: in main, list is not None")
         if p_list in [ 'all', 'enabled', 'disabled' ]:
             result=rhsmrepos.list_stuff(p_list)
-            module.exit_json(changed=False,redhat_repositories=result)
+            module.exit_json(changed=False, redhat_repositories=result)
         else:
             # we shouldn't reach this with Ansible.
-            module.exit_json(changed=False,error="Unknown list primitive")
+            module.exit_json(changed=False, error="Unknown list primitive")
 
     elif p_id is not None:
         notice("redhat_repository: in main, id is not None")
@@ -378,7 +382,7 @@ def main():
             if p_state == 'enabled':
                 ( has_changed, changed_repos ) = rhsmrepos.enable_only(p_id)
             else:
-                module.exit_json(changed=False,error="Can't use state=disabled in idempotent mode")
+                module.exit_json(changed=False, error="Can't use state=disabled in idempotent mode")
 
         elif p_mode == 'incremental':
             if p_state == 'enabled':
@@ -390,8 +394,7 @@ def main():
 
         changed_repos.setdefault('enabled', [])
         changed_repos.setdefault('disabled', [])
-        module.exit_json(changed=has_changed, state=p_state, id=p_id, enabled=changed_repos['enabled'], disabled=changed_repos['disabled']);
+        module.exit_json(changed=has_changed, state=p_state, id=p_id, enabled=changed_repos['enabled'], disabled=changed_repos['disabled'])
 
 if __name__ == '__main__':
     main()
-

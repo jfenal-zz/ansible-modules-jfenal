@@ -17,10 +17,10 @@
     register: list_enabled
 
   - name: debug list enabled (should be empty)
-    debug: var=list_enabled.repos
+    debug: var=list_enabled.redhat_repositories
 
   - name: assert list_enabled is empty
     assert: 
       that:
-      - "list_enabled.repos == {}"   
+      - "list_enabled.redhat_repositories == {}"   
       msg: "list_enabled must be empty"
